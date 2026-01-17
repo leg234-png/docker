@@ -101,25 +101,499 @@ Une **image Docker** est un modèle en lecture seule utilisé pour créer des co
 
 Un **Dockerfile** est un fichier texte contenant des instructions pour construire une image Docker. Chaque instruction crée une nouvelle couche dans l'image.
 
-**Exemple de Dockerfile :**
+**Structure d'un Dockerfile :**
+Un Dockerfile suit généralement cette structure :
+1. **FROM** : Définir l'image de base
+2. **Métadonnées** : LABEL, MAINTAINER
+3. **Variables d'environnement** : ENV, ARG
+4. **Installation de dépendances** : RUN
+5. **Copie de fichiers** : COPY, ADD
+6. **Configuration** : WORKDIR, USER, EXPOSE
+7. **Point d'entrée** : CMD, ENTRYPOINT
+
+**Exemple de Dockerfile complet :**
 ```dockerfile
-FROM node:16              # Image de base
-WORKDIR /app              # Définir le répertoire de travail
-COPY package.json .        # Copier les fichiers
-RUN npm install           # Installer les dépendances
-COPY . .                  # Copier le code source
-EXPOSE 3000               # Exposer le port
-CMD ["node", "app.js"]    # Commande de démarrage
+# Étape 1 : Image de base
+FROM node:16-alpine
+
+# Étape 2 : Métadonnées
+LABEL maintainer="votre-email@example.com"
+LABEL version="1.0"
+
+# Étape 3 : Variables d'environnement
+ENV NODE_ENV=production
+ENV PORT=3000
+
+# Étape 4 : Arguments de build (peuvent être passés lors du build)
+ARG BUILD_DATE
+ARG VCS_REF
+
+# Étape 5 : Définir le répertoire de travail
+WORKDIR /app
+
+# Étape 6 : Copier les fichiers de dépendances
+COPY package*.json ./
+
+# Étape 7 : Installer les dépendances
+RUN npm ci --only=production
+
+# Étape 8 : Copier le code source
+COPY . .
+
+# Étape 9 : Créer un utilisateur non-root (sécurité)
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
+USER nodejs
+
+# Étape 10 : Exposer le port
+EXPOSE 3000
+
+# Étape 11 : Point d'entrée
+CMD ["node", "server.js"]
 ```
 
-**Instructions courantes :**
-- `FROM` : Image de base
-- `RUN` : Exécuter une commande
-- `COPY` / `ADD` : Copier des fichiers
-- `WORKDIR` : Définir le répertoire de travail
-- `EXPOSE` : Documenter les ports
-- `CMD` / `ENTRYPOINT` : Commande de démarrage
-- `ENV` : Variables d'environnement
+## Toutes les instructions Dockerfile expliquées
+
+### FROM
+Définit l'image de base à utiliser. **Doit être la première instruction** (sauf ARG).
+
+**Syntaxe :**
+```dockerfile
+FROM <image>[:<tag>] [AS <name>]
+FROM <image>[@<digest>] [AS <name>]
+```
+
+**Exemples :**
+```dockerfile
+FROM ubuntu:20.04
+FROM node:16-alpine AS builder
+FROM python:3.9-slim
+FROM nginx:latest
+```
+
+**Multi-stage builds :**
+```dockerfile
+FROM node:16 AS build
+WORKDIR /app
+COPY . .
+RUN npm run build
+
+FROM nginx:alpine
+COPY --from=build /app/dist /usr/share/nginx/html
+```
+
+### RUN
+Exécute une commande dans une nouvelle couche et commit le résultat.
+
+**Syntaxe :**
+```dockerfile
+RUN <command>                    # Shell form
+RUN ["executable", "param1", "param2"]  # Exec form
+```
+
+**Exemples :**
+```dockerfile
+RUN apt-get update && apt-get install -y curl
+RUN npm install
+RUN ["/bin/bash", "-c", "echo hello"]
+RUN pip install --no-cache-dir -r requirements.txt
+```
+
+**Bonnes pratiques :**
+- Combiner plusieurs commandes avec `&&` pour réduire les couches
+- Utiliser `--no-cache` pour apt-get quand possible
+- Nettoyer les caches après installation
+
+### COPY
+Copie des fichiers ou répertoires du contexte de build vers l'image.
+
+**Syntaxe :**
+```dockerfile
+COPY [--chown=<user>:<group>] <src>... <dest>
+COPY [--chown=<user>:<group>] ["<src>",... "<dest>"]
+```
+
+**Exemples :**
+```dockerfile
+COPY package.json .
+COPY package*.json ./
+COPY . /app
+COPY --chown=node:node app.js /app/
+COPY ["src", "dest"]
+```
+
+**Différences avec ADD :**
+- `COPY` est préféré (plus simple et prévisible)
+- `ADD` peut télécharger depuis une URL et extraire des archives (moins recommandé)
+
+### ADD
+Copie des fichiers, répertoires ou URLs vers l'image. Peut aussi extraire des archives.
+
+**Syntaxe :**
+```dockerfile
+ADD [--chown=<user>:<group>] <src>... <dest>
+ADD [--chown=<user>:<group>] ["<src>",... "<dest>"]
+```
+
+**Exemples :**
+```dockerfile
+ADD https://example.com/file.tar.gz /tmp/
+ADD archive.tar.gz /app/
+ADD --chown=user:group file.txt /app/
+```
+
+**Note :** Préférez `COPY` sauf si vous avez besoin des fonctionnalités spécifiques d'`ADD`.
+
+### WORKDIR
+Définit le répertoire de travail pour les instructions suivantes.
+
+**Syntaxe :**
+```dockerfile
+WORKDIR /path/to/workdir
+```
+
+**Exemples :**
+```dockerfile
+WORKDIR /app
+WORKDIR /usr/src/app
+```
+
+**Caractéristiques :**
+- Crée le répertoire s'il n'existe pas
+- Peut être utilisé plusieurs fois (chemin relatif ou absolu)
+- Les commandes `RUN`, `CMD`, `ENTRYPOINT` s'exécutent dans ce répertoire
+
+### ENV
+Définit une variable d'environnement qui persiste dans l'image et les conteneurs.
+
+**Syntaxe :**
+```dockerfile
+ENV <key> <value>
+ENV <key>=<value> ...
+```
+
+**Exemples :**
+```dockerfile
+ENV NODE_ENV production
+ENV PORT=3000
+ENV DB_HOST=localhost DB_PORT=5432
+ENV PATH=/usr/local/bin:$PATH
+```
+
+**Utilisation :**
+- Accessible via `$VARIABLE` ou `${VARIABLE}`
+- Persiste dans les conteneurs créés à partir de l'image
+
+### ARG
+Définit une variable disponible uniquement pendant le build (pas dans le conteneur).
+
+**Syntaxe :**
+```dockerfile
+ARG <name>[=<default_value>]
+```
+
+**Exemples :**
+```dockerfile
+ARG VERSION=latest
+ARG BUILD_DATE
+ARG NODE_VERSION=16
+```
+
+**Utilisation :**
+```bash
+docker build --build-arg VERSION=1.0.0 .
+```
+
+**Dans le Dockerfile :**
+```dockerfile
+ARG VERSION
+ENV APP_VERSION=$VERSION
+```
+
+**Note :** Les ARG doivent être déclarés avant leur première utilisation.
+
+### EXPOSE
+Documente les ports sur lesquels le conteneur écoute. **Ne publie pas réellement les ports.**
+
+**Syntaxe :**
+```dockerfile
+EXPOSE <port> [<port>/<protocol>]
+```
+
+**Exemples :**
+```dockerfile
+EXPOSE 80
+EXPOSE 3000
+EXPOSE 8080/tcp
+EXPOSE 53/udp
+EXPOSE 80 443
+```
+
+**Note :** Pour publier les ports, utilisez `docker run -p` ou `docker-compose.yml`.
+
+### CMD
+Fournit la commande par défaut à exécuter quand un conteneur démarre. **Peut être surchargée** lors du `docker run`.
+
+**Syntaxe :**
+```dockerfile
+CMD ["executable","param1","param2"]  # Exec form (recommandé)
+CMD command param1 param2              # Shell form
+CMD ["param1","param2"]                # Utilisé avec ENTRYPOINT
+```
+
+**Exemples :**
+```dockerfile
+CMD ["node", "server.js"]
+CMD ["npm", "start"]
+CMD node server.js
+CMD ["param1", "param2"]  # Avec ENTRYPOINT
+```
+
+**Caractéristiques :**
+- Une seule instruction `CMD` par Dockerfile (la dernière est utilisée)
+- Peut être surchargée : `docker run <image> <autre-commande>`
+
+### ENTRYPOINT
+Configure le conteneur pour qu'il s'exécute comme un exécutable. **Ne peut pas être surchargée** facilement.
+
+**Syntaxe :**
+```dockerfile
+ENTRYPOINT ["executable", "param1", "param2"]  # Exec form (recommandé)
+ENTRYPOINT command param1 param2                # Shell form
+```
+
+**Exemples :**
+```dockerfile
+ENTRYPOINT ["nginx", "-g", "daemon off;"]
+ENTRYPOINT ["python", "app.py"]
+```
+
+**Différence avec CMD :**
+- `ENTRYPOINT` : Commande fixe, arguments de `CMD` passés comme paramètres
+- `CMD` : Commande par défaut, peut être complètement remplacée
+
+**Utilisation combinée :**
+```dockerfile
+ENTRYPOINT ["docker-entrypoint.sh"]
+CMD ["--help"]  # Arguments par défaut
+```
+
+### USER
+Définit l'utilisateur (et optionnellement le groupe) pour les instructions suivantes.
+
+**Syntaxe :**
+```dockerfile
+USER <user>[:<group>]
+USER <UID>[:<GID>]
+```
+
+**Exemples :**
+```dockerfile
+USER node
+USER 1000:1000
+USER www-data
+```
+
+**Sécurité :**
+- Ne pas utiliser root par défaut
+- Créer un utilisateur non-privilégié
+
+**Exemple complet :**
+```dockerfile
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+USER appuser
+```
+
+### LABEL
+Ajoute des métadonnées à l'image sous forme de paires clé-valeur.
+
+**Syntaxe :**
+```dockerfile
+LABEL <key>=<value> <key>=<value> ...
+LABEL <key>=<value>
+```
+
+**Exemples :**
+```dockerfile
+LABEL maintainer="votre-email@example.com"
+LABEL version="1.0"
+LABEL description="Mon application"
+LABEL "com.example.vendor"="ACME"
+LABEL com.example.version="1.0" \
+      com.example.release-date="2024-01-01"
+```
+
+### VOLUME
+Crée un point de montage pour des volumes nommés ou externes.
+
+**Syntaxe :**
+```dockerfile
+VOLUME ["/path"]
+VOLUME /path
+```
+
+**Exemples :**
+```dockerfile
+VOLUME ["/data"]
+VOLUME /var/lib/mysql
+VOLUME ["/data", "/logs"]
+```
+
+**Note :** Les données dans les volumes persistent même si le conteneur est supprimé.
+
+### STOPSIGNAL
+Définit le signal système à envoyer au conteneur pour l'arrêter.
+
+**Syntaxe :**
+```dockerfile
+STOPSIGNAL signal
+```
+
+**Exemples :**
+```dockerfile
+STOPSIGNAL SIGTERM
+STOPSIGNAL SIGKILL
+```
+
+### HEALTHCHECK
+Définit une commande pour vérifier la santé du conteneur.
+
+**Syntaxe :**
+```dockerfile
+HEALTHCHECK [OPTIONS] CMD command
+HEALTHCHECK NONE
+```
+
+**Options :**
+- `--interval=DURATION` : Intervalle entre les vérifications (défaut: 30s)
+- `--timeout=DURATION` : Timeout pour chaque vérification (défaut: 30s)
+- `--start-period=DURATION` : Période de démarrage (défaut: 0s)
+- `--retries=N` : Nombre d'échecs consécutifs avant unhealthy (défaut: 3)
+
+**Exemples :**
+```dockerfile
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:3000/health || exit 1
+
+HEALTHCHECK CMD pg_isready -U postgres || exit 1
+```
+
+### SHELL
+Remplace le shell par défaut pour la forme shell des commandes.
+
+**Syntaxe :**
+```dockerfile
+SHELL ["executable", "parameters"]
+```
+
+**Exemples :**
+```dockerfile
+SHELL ["/bin/bash", "-c"]
+SHELL ["powershell", "-command"]
+```
+
+### MAINTAINER (déprécié)
+Définit l'auteur de l'image. **Utilisez LABEL à la place.**
+
+**Syntaxe :**
+```dockerfile
+MAINTAINER <name>
+```
+
+**Remplacement recommandé :**
+```dockerfile
+LABEL maintainer="votre-email@example.com"
+```
+
+### ONBUILD
+Ajoute une instruction à exécuter quand l'image est utilisée comme base pour un autre build.
+
+**Syntaxe :**
+```dockerfile
+ONBUILD <INSTRUCTION>
+```
+
+**Exemples :**
+```dockerfile
+ONBUILD COPY . /app/src
+ONBUILD RUN npm install
+```
+
+**Utilisation :** Utile pour créer des images de base réutilisables.
+
+### .dockerignore
+Fichier (similaire à .gitignore) qui exclut des fichiers du contexte de build.
+
+**Exemple .dockerignore :**
+```
+node_modules
+npm-debug.log
+.git
+.gitignore
+.env
+*.md
+.DS_Store
+```
+
+**Avantages :**
+- Réduit la taille du contexte de build
+- Accélère le build
+- Évite d'inclure des fichiers sensibles
+
+## Structure complète d'un Dockerfile optimisé
+
+**Exemple pour une application Node.js :**
+```dockerfile
+# Multi-stage build pour optimiser la taille
+FROM node:16-alpine AS builder
+
+# Métadonnées
+LABEL maintainer="dev@example.com"
+LABEL version="1.0.0"
+
+# Arguments de build
+ARG NODE_ENV=production
+ARG BUILD_DATE
+ARG VCS_REF
+
+# Variables d'environnement
+ENV NODE_ENV=${NODE_ENV}
+ENV NPM_CONFIG_LOGLEVEL=warn
+
+# Répertoire de travail
+WORKDIR /app
+
+# Copier et installer les dépendances
+COPY package*.json ./
+RUN npm ci --only=production && npm cache clean --force
+
+# Stage de production
+FROM node:16-alpine
+
+# Créer un utilisateur non-root
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
+
+WORKDIR /app
+
+# Copier depuis le stage builder
+COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
+COPY --chown=nodejs:nodejs . .
+
+# Utilisateur non-root
+USER nodejs
+
+# Exposer le port
+EXPOSE 3000
+
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD node healthcheck.js
+
+# Point d'entrée
+ENTRYPOINT ["node"]
+CMD ["server.js"]
+```
 
 ### Docker Hub
 
@@ -466,6 +940,766 @@ docker volume inspect <volume_name>
 docker volume rm <volume_name>
 docker volume prune  # Supprimer les volumes non utilisés
 ```
+
+## Structure complète de docker-compose.yml
+
+**Docker Compose** est un outil pour définir et exécuter des applications Docker multi-conteneurs. Il utilise un fichier YAML (`docker-compose.yml`) pour configurer les services, réseaux et volumes.
+
+### Structure de base d'un docker-compose.yml
+
+**Exemple minimal :**
+```yaml
+version: '3.8'
+
+services:
+  web:
+    image: nginx:latest
+    ports:
+      - "8080:80"
+```
+
+### Toutes les options de docker-compose.yml expliquées
+
+#### version
+Définit la version du format du fichier Compose.
+
+**Syntaxe :**
+```yaml
+version: '3.8'
+```
+
+**Versions courantes :**
+- `'3.8'` : Version moderne (recommandée)
+- `'3.7'`, `'3.6'`, etc. : Versions antérieures
+- `'2'` : Format legacy
+
+**Note :** Depuis Compose v1.27.0+, le champ `version` est optionnel.
+
+#### services
+Définit les services (conteneurs) de votre application.
+
+**Syntaxe :**
+```yaml
+services:
+  service-name:
+    # Configuration du service
+```
+
+**Exemple :**
+```yaml
+services:
+  web:
+    build: .
+    ports:
+      - "3000:3000"
+  db:
+    image: postgres:13
+```
+
+### Options de service - Images
+
+#### image
+Spécifie l'image Docker à utiliser.
+
+**Syntaxe :**
+```yaml
+image: <image>[:<tag>]
+```
+
+**Exemples :**
+```yaml
+image: nginx:latest
+image: postgres:13-alpine
+image: myregistry.com/myapp:v1.0
+```
+
+#### build
+Définit comment construire l'image à partir d'un Dockerfile.
+
+**Syntaxe simple :**
+```yaml
+build: .
+build: ./path/to/dockerfile
+```
+
+**Syntaxe complète :**
+```yaml
+build:
+  context: .
+  dockerfile: Dockerfile
+  args:
+    - NODE_ENV=production
+  target: production
+  cache_from:
+    - myapp:latest
+```
+
+**Exemples :**
+```yaml
+build:
+  context: ./app
+  dockerfile: Dockerfile.prod
+  args:
+    BUILD_DATE: ${BUILD_DATE}
+    VERSION: ${VERSION}
+```
+
+### Options de service - Ports
+
+#### ports
+Mappe les ports du conteneur vers l'hôte.
+
+**Syntaxe :**
+```yaml
+ports:
+  - "<host_port>:<container_port>"
+  - "<host_port>:<container_port>/<protocol>"
+```
+
+**Exemples :**
+```yaml
+ports:
+  - "8080:80"
+  - "3000:3000"
+  - "53:53/udp"
+  - "127.0.0.1:8080:80"  # Spécifier l'interface
+```
+
+**Note :** `ports` publie les ports. Pour exposer sans publier, utilisez `expose`.
+
+#### expose
+Expose des ports sans les publier sur l'hôte (pour communication inter-conteneurs).
+
+**Syntaxe :**
+```yaml
+expose:
+  - "3000"
+  - "5432"
+```
+
+### Options de service - Variables d'environnement
+
+#### environment
+Définit les variables d'environnement.
+
+**Syntaxe :**
+```yaml
+environment:
+  - VAR=value
+  - VAR2=value2
+```
+
+**Ou :**
+```yaml
+environment:
+  VAR: value
+  VAR2: value2
+```
+
+**Exemples :**
+```yaml
+environment:
+  - NODE_ENV=production
+  - DATABASE_URL=postgres://user:pass@db:5432/mydb
+  - REDIS_HOST=redis
+```
+
+#### env_file
+Charge les variables d'environnement depuis un fichier.
+
+**Syntaxe :**
+```yaml
+env_file:
+  - .env
+  - .env.production
+```
+
+**Exemple :**
+```yaml
+env_file:
+  - .env
+  - .env.local
+```
+
+### Options de service - Volumes
+
+#### volumes
+Monte des volumes ou des bind mounts.
+
+**Syntaxe :**
+```yaml
+volumes:
+  - <host_path>:<container_path>
+  - <volume_name>:<container_path>
+  - <container_path>  # Volume anonyme
+```
+
+**Exemples :**
+```yaml
+volumes:
+  - ./data:/app/data
+  - db_data:/var/lib/postgresql/data
+  - /app/logs
+  - type: bind
+    source: ./config
+    target: /app/config
+```
+
+**Types de volumes :**
+- **bind mount** : `./path:/container/path`
+- **named volume** : `volume_name:/container/path`
+- **anonymous volume** : `/container/path`
+
+**Options avancées :**
+```yaml
+volumes:
+  - type: volume
+    source: mydata
+    target: /data
+    volume:
+      nocopy: true
+  - type: bind
+    source: ./src
+    target: /app
+    bind:
+      propagation: rshared
+```
+
+#### volumes (niveau racine)
+Définit les volumes nommés partagés.
+
+**Syntaxe :**
+```yaml
+volumes:
+  volume_name:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /path
+```
+
+**Exemples :**
+```yaml
+volumes:
+  db_data:
+    driver: local
+  cache:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+```
+
+### Options de service - Réseau
+
+#### networks
+Définit les réseaux auxquels le service se connecte.
+
+**Syntaxe :**
+```yaml
+networks:
+  - network_name
+  - default
+```
+
+**Exemples :**
+```yaml
+networks:
+  - frontend
+  - backend
+```
+
+**Avec configuration :**
+```yaml
+networks:
+  frontend:
+    aliases:
+      - web
+      - app
+  backend:
+    ipv4_address: 172.20.0.10
+```
+
+#### networks (niveau racine)
+Définit les réseaux personnalisés.
+
+**Syntaxe :**
+```yaml
+networks:
+  network_name:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: br0
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+```
+
+**Exemples :**
+```yaml
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
+    internal: true  # Réseau isolé
+```
+
+### Options de service - Dépendances
+
+#### depends_on
+Définit l'ordre de démarrage des services.
+
+**Syntaxe :**
+```yaml
+depends_on:
+  - service1
+  - service2
+```
+
+**Exemples :**
+```yaml
+services:
+  web:
+    depends_on:
+      - db
+      - redis
+  db:
+    image: postgres
+```
+
+**Avec conditions :**
+```yaml
+depends_on:
+  db:
+    condition: service_healthy
+  redis:
+    condition: service_started
+```
+
+### Options de service - Commandes
+
+#### command
+Remplace la commande par défaut du conteneur.
+
+**Syntaxe :**
+```yaml
+command: ["executable", "param1", "param2"]
+command: sh -c "echo hello"
+```
+
+**Exemples :**
+```yaml
+command: ["node", "server.js"]
+command: npm start
+command: >
+  sh -c "npm install && npm start"
+```
+
+#### entrypoint
+Remplace le point d'entrée par défaut.
+
+**Syntaxe :**
+```yaml
+entrypoint: ["executable", "param"]
+entrypoint: /entrypoint.sh
+```
+
+### Options de service - Ressources
+
+#### deploy
+Options de déploiement (pour Docker Swarm).
+
+**Syntaxe :**
+```yaml
+deploy:
+  replicas: 3
+  resources:
+    limits:
+      cpus: '0.5'
+      memory: 512M
+    reservations:
+      cpus: '0.25'
+      memory: 256M
+  restart_policy:
+    condition: on-failure
+    delay: 5s
+    max_attempts: 3
+```
+
+**Exemples :**
+```yaml
+deploy:
+  mode: replicated
+  replicas: 2
+  resources:
+    limits:
+      memory: 1G
+    reservations:
+      cpus: '0.5'
+```
+
+#### mem_limit / cpus (legacy)
+Limites de ressources (format legacy).
+
+**Syntaxe :**
+```yaml
+mem_limit: 512m
+cpus: 0.5
+```
+
+### Options de service - Restart
+
+#### restart
+Politique de redémarrage du conteneur.
+
+**Syntaxe :**
+```yaml
+restart: always
+restart: unless-stopped
+restart: on-failure
+restart: no
+```
+
+**Exemples :**
+```yaml
+restart: always  # Toujours redémarrer
+restart: on-failure:3  # Redémarrer en cas d'échec, max 3 fois
+```
+
+### Options de service - Healthcheck
+
+#### healthcheck
+Configure le healthcheck du service.
+
+**Syntaxe :**
+```yaml
+healthcheck:
+  test: ["CMD", "curl", "-f", "http://localhost"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 40s
+```
+
+**Exemples :**
+```yaml
+healthcheck:
+  test: ["CMD-SHELL", "pg_isready -U postgres"]
+  interval: 10s
+  timeout: 5s
+  retries: 5
+```
+
+### Options de service - Autres
+
+#### container_name
+Définit un nom personnalisé pour le conteneur.
+
+**Syntaxe :**
+```yaml
+container_name: my-app
+```
+
+#### working_dir
+Définit le répertoire de travail.
+
+**Syntaxe :**
+```yaml
+working_dir: /app
+```
+
+#### user
+Définit l'utilisateur pour exécuter les commandes.
+
+**Syntaxe :**
+```yaml
+user: "1000:1000"
+user: node
+```
+
+#### labels
+Ajoute des métadonnées au service.
+
+**Syntaxe :**
+```yaml
+labels:
+  - "com.example.description=Web server"
+  - "com.example.version=1.0"
+```
+
+**Ou :**
+```yaml
+labels:
+  com.example.description: "Web server"
+  com.example.version: "1.0"
+```
+
+#### logging
+Configure le logging du service.
+
+**Syntaxe :**
+```yaml
+logging:
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+```
+
+**Exemples :**
+```yaml
+logging:
+  driver: syslog
+  options:
+    syslog-address: "tcp://192.168.0.42:123"
+```
+
+#### dns
+Définit des serveurs DNS personnalisés.
+
+**Syntaxe :**
+```yaml
+dns:
+  - 8.8.8.8
+  - 8.8.4.4
+```
+
+#### extra_hosts
+Ajoute des entrées au fichier /etc/hosts.
+
+**Syntaxe :**
+```yaml
+extra_hosts:
+  - "somehost:162.242.195.82"
+  - "otherhost:50.31.209.229"
+```
+
+#### security_opt
+Options de sécurité.
+
+**Syntaxe :**
+```yaml
+security_opt:
+  - apparmor:profile_name
+  - seccomp:unconfined
+```
+
+#### cap_add / cap_drop
+Ajoute ou supprime des capabilities Linux.
+
+**Syntaxe :**
+```yaml
+cap_add:
+  - ALL
+cap_drop:
+  - NET_ADMIN
+```
+
+#### devices
+Accès aux périphériques de l'hôte.
+
+**Syntaxe :**
+```yaml
+devices:
+  - /dev/ttyUSB0:/dev/ttyUSB0
+```
+
+#### tmpfs
+Monte un tmpfs dans le conteneur.
+
+**Syntaxe :**
+```yaml
+tmpfs:
+  - /tmp
+  - /run:size=100m
+```
+
+#### stdin_open / tty
+Alloue un pseudo-TTY.
+
+**Syntaxe :**
+```yaml
+stdin_open: true
+tty: true
+```
+
+#### privileged
+Donne des privilèges étendus au conteneur.
+
+**Syntaxe :**
+```yaml
+privileged: true
+```
+
+### Variables d'environnement et substitution
+
+#### Utilisation de variables
+Vous pouvez utiliser des variables d'environnement dans docker-compose.yml.
+
+**Syntaxe :**
+```yaml
+environment:
+  - VAR=${VAR}
+  - VAR2=${VAR2:-default_value}
+```
+
+**Exemples :**
+```yaml
+services:
+  web:
+    image: ${IMAGE_NAME:-nginx}:${IMAGE_TAG:-latest}
+    ports:
+      - "${PORT:-8080}:80"
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+```
+
+#### Fichier .env
+Créez un fichier `.env` pour définir les variables :
+
+```env
+IMAGE_NAME=myapp
+IMAGE_TAG=v1.0
+PORT=3000
+NODE_ENV=production
+DATABASE_URL=postgres://user:pass@db:5432/mydb
+```
+
+### Exemple complet de docker-compose.yml
+
+**Application complète avec web, base de données et cache :**
+```yaml
+version: '3.8'
+
+services:
+  # Service web
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NODE_ENV: production
+    image: myapp:latest
+    container_name: myapp-web
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgres://user:password@db:5432/mydb
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    env_file:
+      - .env
+    volumes:
+      - ./src:/app/src
+      - app_logs:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - frontend
+      - backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      - "com.example.description=Web application"
+      - "com.example.version=1.0.0"
+
+  # Service base de données
+  db:
+    image: postgres:13-alpine
+    container_name: myapp-db
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: mydb
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - backend
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432:5432"
+
+  # Service Redis
+  redis:
+    image: redis:6-alpine
+    container_name: myapp-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # Service Nginx (reverse proxy)
+  nginx:
+    image: nginx:alpine
+    container_name: myapp-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - web
+    networks:
+      - frontend
+    restart: always
+
+# Volumes nommés
+volumes:
+  db_data:
+    driver: local
+  redis_data:
+    driver: local
+  app_logs:
+    driver: local
+
+# Réseaux
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
+    internal: false
+```
+
+### Bonnes pratiques pour docker-compose.yml
+
+1. **Utiliser des variables d'environnement** pour la configuration
+2. **Séparer les services** par responsabilité
+3. **Utiliser des healthchecks** pour les dépendances
+4. **Définir des restart policies** appropriées
+5. **Utiliser des volumes nommés** pour la persistance
+6. **Créer des réseaux séparés** pour isoler les services
+7. **Utiliser des images spécifiques** (éviter `latest` en production)
+8. **Documenter avec des labels**
+9. **Utiliser depends_on** pour l'ordre de démarrage
+10. **Versionner le fichier** dans Git
 
 ### Docker Compose
 
