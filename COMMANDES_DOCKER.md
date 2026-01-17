@@ -1,5 +1,297 @@
 # Commandes Docker - Guide de référence
 
+## Introduction à Docker
+
+### Qu'est-ce que Docker ?
+
+Docker est une plateforme open-source de virtualisation au niveau du système d'exploitation qui permet de créer, déployer et exécuter des applications dans des conteneurs. Contrairement aux machines virtuelles traditionnelles qui virtualisent tout le matériel, Docker virtualise uniquement le système d'exploitation, ce qui le rend beaucoup plus léger et rapide.
+
+**Avantages de Docker :**
+- **Portabilité** : Une application fonctionne de la même manière sur n'importe quel système (Windows, Linux, Mac)
+- **Isolation** : Chaque application s'exécute dans son propre environnement isolé
+- **Efficacité** : Utilisation optimale des ressources système
+- **Rapidité** : Démarrage des conteneurs en quelques secondes
+- **Cohérence** : L'environnement de développement est identique à celui de production
+
+### Qu'est-ce qu'un conteneur ?
+
+Un **conteneur** est une instance exécutable d'une image Docker. C'est un processus isolé qui contient :
+- L'application et ses dépendances
+- Les bibliothèques système nécessaires
+- Les fichiers de configuration
+- Un système de fichiers virtuel
+
+**Caractéristiques d'un conteneur :**
+- **Isolé** : Chaque conteneur a son propre espace de noms (processus, réseau, fichiers)
+- **Léger** : Partage le noyau du système hôte, pas besoin d'un OS complet
+- **Éphémère** : Peut être créé, arrêté et supprimé rapidement
+- **Portable** : Fonctionne de la même manière sur n'importe quel système Docker
+
+**Exemple :** Un conteneur peut contenir une application Node.js avec toutes ses dépendances npm, sans avoir besoin d'installer Node.js sur la machine hôte.
+
+### Qu'est-ce qu'une couche (Layer) ?
+
+Une **couche** est une modification apportée à une image Docker. Les images Docker sont construites à partir de couches empilées les unes sur les autres, formant une structure en couches (layered filesystem).
+
+**Comment ça fonctionne :**
+- Chaque instruction dans un Dockerfile crée une nouvelle couche
+- Les couches sont **en lecture seule** (read-only)
+- Une couche **écriture** (writable layer) est ajoutée au-dessus lors de l'exécution d'un conteneur
+- Les couches sont partagées entre les images et les conteneurs, ce qui économise l'espace disque
+
+**Exemple de couches :**
+```
+Couche 1 : Base OS (Ubuntu)
+Couche 2 : Installation de Node.js
+Couche 3 : Copie des fichiers package.json
+Couche 4 : Installation des dépendances npm
+Couche 5 : Copie du code source
+Couche 6 : Commande de démarrage
+```
+
+**Avantages :**
+- **Réutilisation** : Les couches communes sont partagées entre plusieurs images
+- **Efficacité** : Seules les couches modifiées sont reconstruites
+- **Taille réduite** : Économie d'espace disque grâce au partage
+
+### Docker Engine
+
+**Docker Engine** est le cœur de Docker, le runtime qui permet de créer et gérer les conteneurs. Il se compose de trois composants principaux :
+
+1. **Docker Daemon (dockerd)** : Le processus en arrière-plan qui gère les conteneurs, images, réseaux et volumes
+2. **Docker Client (docker)** : L'interface en ligne de commande qui communique avec le daemon
+3. **REST API** : L'API qui permet aux applications de communiquer avec le daemon
+
+**Fonctionnement :**
+```
+Docker Client → REST API → Docker Daemon → Conteneurs
+```
+
+### Docker Client
+
+Le **Docker Client** est l'interface en ligne de commande (CLI) que vous utilisez pour interagir avec Docker. Quand vous tapez `docker run`, `docker build`, etc., vous utilisez le client Docker.
+
+Le client envoie les commandes au Docker Daemon via l'API REST.
+
+### Docker Daemon
+
+Le **Docker Daemon** (dockerd) est le processus serveur qui :
+- Écoute les requêtes du client Docker
+- Gère les images, conteneurs, réseaux et volumes
+- Communique avec le noyau Linux pour créer et gérer les conteneurs
+
+Il s'exécute en arrière-plan sur votre machine.
+
+### Docker Image
+
+Une **image Docker** est un modèle en lecture seule utilisé pour créer des conteneurs. C'est comme un "moule" qui contient :
+- Un système d'exploitation minimal (souvent Linux)
+- L'application et ses dépendances
+- Les fichiers de configuration
+- Les métadonnées nécessaires
+
+**Caractéristiques :**
+- **Immuable** : Une fois créée, une image ne change pas
+- **Empilable** : Construite à partir de couches
+- **Partageable** : Peut être poussée vers un registry et réutilisée
+
+**Exemple :** L'image `nginx:latest` contient le serveur web Nginx avec toutes ses dépendances.
+
+### Dockerfile
+
+Un **Dockerfile** est un fichier texte contenant des instructions pour construire une image Docker. Chaque instruction crée une nouvelle couche dans l'image.
+
+**Exemple de Dockerfile :**
+```dockerfile
+FROM node:16              # Image de base
+WORKDIR /app              # Définir le répertoire de travail
+COPY package.json .        # Copier les fichiers
+RUN npm install           # Installer les dépendances
+COPY . .                  # Copier le code source
+EXPOSE 3000               # Exposer le port
+CMD ["node", "app.js"]    # Commande de démarrage
+```
+
+**Instructions courantes :**
+- `FROM` : Image de base
+- `RUN` : Exécuter une commande
+- `COPY` / `ADD` : Copier des fichiers
+- `WORKDIR` : Définir le répertoire de travail
+- `EXPOSE` : Documenter les ports
+- `CMD` / `ENTRYPOINT` : Commande de démarrage
+- `ENV` : Variables d'environnement
+
+### Docker Hub
+
+**Docker Hub** est le registry public officiel de Docker, une sorte de "GitHub pour les images Docker". C'est un service cloud qui permet de :
+- **Télécharger** des images pré-construites (pull)
+- **Partager** vos propres images (push)
+- **Rechercher** des images disponibles
+- **Gérer** vos images publiques et privées
+
+**Exemples d'images populaires sur Docker Hub :**
+- `nginx` : Serveur web
+- `mysql` : Base de données MySQL
+- `node` : Runtime Node.js
+- `python` : Runtime Python
+- `redis` : Base de données Redis
+
+**URL :** https://hub.docker.com
+
+### Docker Registry
+
+Un **Docker Registry** est un service qui stocke et distribue des images Docker. Docker Hub est le registry public par défaut, mais vous pouvez utiliser :
+- **Docker Hub** (public/privé)
+- **Amazon ECR** (Elastic Container Registry)
+- **Google Container Registry**
+- **Azure Container Registry**
+- **Registry privé** (self-hosted)
+
+Le registry permet de centraliser et partager les images Docker.
+
+### API Docker
+
+L'**API Docker** est une interface REST qui permet aux applications de communiquer avec le Docker Daemon. Elle permet de :
+- Créer, démarrer, arrêter des conteneurs
+- Gérer les images
+- Gérer les réseaux et volumes
+- Inspecter l'état du système
+
+**Utilisation :**
+- Le Docker Client utilise cette API
+- Les outils comme Docker Compose l'utilisent
+- Les applications peuvent l'utiliser directement
+
+**Endpoint par défaut :** `unix:///var/run/docker.sock` (Linux) ou `npipe:////./pipe/docker_engine` (Windows)
+
+## Pourquoi déployer une application dans un conteneur ?
+
+### Problèmes résolus par Docker
+
+1. **"Ça marche sur ma machine"**
+   - L'environnement de développement est identique à celui de production
+   - Plus de problèmes de versions incompatibles
+
+2. **Dépendances complexes**
+   - Toutes les dépendances sont encapsulées dans le conteneur
+   - Pas de conflits entre différentes versions de bibliothèques
+
+3. **Déploiement simplifié**
+   - Un seul artefact (l'image) contient tout
+   - Déploiement rapide et reproductible
+
+4. **Scalabilité**
+   - Facile de lancer plusieurs instances d'une application
+   - Orchestration simplifiée avec Kubernetes, Docker Swarm, etc.
+
+5. **Isolation**
+   - Chaque application fonctionne indépendamment
+   - Un problème dans une application n'affecte pas les autres
+
+6. **Ressources optimisées**
+   - Plus léger qu'une machine virtuelle
+   - Meilleure utilisation des ressources serveur
+
+### Comment déployer une application dans un conteneur ?
+
+**Étapes typiques :**
+
+1. **Créer un Dockerfile**
+   ```dockerfile
+   FROM node:16
+   WORKDIR /app
+   COPY package*.json ./
+   RUN npm install
+   COPY . .
+   EXPOSE 3000
+   CMD ["node", "server.js"]
+   ```
+
+2. **Construire l'image**
+   ```bash
+   docker build -t mon-app .
+   ```
+
+3. **Tester localement**
+   ```bash
+   docker run -p 3000:3000 mon-app
+   ```
+
+4. **Pousser vers un registry**
+   ```bash
+   docker tag mon-app username/mon-app:latest
+   docker push username/mon-app:latest
+   ```
+
+5. **Déployer en production**
+   ```bash
+   docker pull username/mon-app:latest
+   docker run -d -p 3000:3000 username/mon-app:latest
+   ```
+
+## Comment utiliser Docker ?
+
+### Installation
+
+**Windows/Mac :**
+- Télécharger Docker Desktop depuis https://www.docker.com/products/docker-desktop
+- Installer et démarrer Docker Desktop
+
+**Linux :**
+```bash
+curl -fsSL https://get.docker.com -o get-docker.sh
+sh get-docker.sh
+```
+
+### Vérifier l'installation
+
+```bash
+docker --version
+docker run hello-world
+```
+
+### Workflow de base
+
+1. **Télécharger une image** (ou la construire)
+   ```bash
+   docker pull nginx
+   ```
+
+2. **Créer et démarrer un conteneur**
+   ```bash
+   docker run -d -p 8080:80 --name mon-nginx nginx
+   ```
+
+3. **Vérifier que ça fonctionne**
+   ```bash
+   docker ps
+   curl http://localhost:8080
+   ```
+
+4. **Voir les logs**
+   ```bash
+   docker logs mon-nginx
+   ```
+
+5. **Arrêter le conteneur**
+   ```bash
+   docker stop mon-nginx
+   ```
+
+6. **Supprimer le conteneur**
+   ```bash
+   docker rm mon-nginx
+   ```
+
+### Bonnes pratiques
+
+- **Utiliser des images officielles** quand c'est possible
+- **Créer des images légères** (utiliser des images de base minimales)
+- **Ne pas stocker de données** dans les conteneurs (utiliser des volumes)
+- **Une application par conteneur** (séparation des responsabilités)
+- **Utiliser des tags spécifiques** plutôt que `latest` en production
+- **Optimiser les Dockerfiles** (mettre les couches qui changent rarement en premier)
+
 ## Commandes de base
 
 ### Gestion des conteneurs
